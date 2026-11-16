@@ -1,28 +1,40 @@
-# Sites Worker ESM starter
+# Proteome
 
-Use this starter for a static microsite, click counter, or simple internal UI whose state is browser-scoped. It has no dependencies and needs no install.
+Proteome — веб-чат с мультиагентной системой для поиска информации о генах и белках человека. Система использует UniProt и Gene Ontology через QuickGO. Чат отвечает на языке пользователя и показывает ссылки на записи и журнал работы агентов.
 
-Edit `worker/index.js`, then publish through the Sites hosting workflow with this starter's build and validation in `commands`.
+[Открыть Proteome](https://proteome-gene-chat.official-healthy-yum.chatgpt.site/)
 
-The build copies only `worker/index.js` and `.openai/hosting.json`. Do not add standalone asset files. Embed any essential raster bytes in `worker/index.js` and serve or reference them as a data URL.
+## Как взаимодействуют агенты
 
-Pass these argument arrays as `commands`:
+| Агент | Решение | Что передаёт дальше |
+| --- | --- | --- |
+| Агент чата | Учитывает вопрос и историю. Решает, ответить сразу или искать сведения о белке. | Задачу агенту UniProt. После поиска составляет итоговый ответ. |
+| Агент UniProt | Выбирает поиск по символу гена или английскому названию белка. | Проверенную запись человеческого белка, её идентификатор и описание функции. |
+| Агент Gene Ontology | Получает вопрос и запись UniProt. Выбирает, нужны ли данные GO и какие категории запросить. | Термины GO, коды доказательств и ссылки на записи или публикации. |
 
-```json
-[
-  ["bash", "scripts/build.sh"],
-  ["node", "scripts/validate-artifact.mjs"]
-]
+Сервер передаёт структурированные данные между ролями. Все роли используют выбранную модель OpenRouter, каждая со своим промптом. Журнал «Работа агентов» показывает передачи задач, вызовы инструментов и результаты вызовов.
+
+На вопрос «Что делает SOD1 у человека?» агент чата запускает поиск. UniProt возвращает запись `P00441`. Агент GO использует её идентификатор для поиска аннотаций в QuickGO. Модель получает записи обоих источников вместе с вопросом и составляет ответ. Это RAG с прямым поиском через API. Сервер проверяет, что метки в ответе относятся к полученным записям, а интерфейс превращает их в ссылки.
+
+## MCP и источники
+
+На `POST /mcp` доступны JSON-RPC методы `initialize`, `tools/list` и `tools/call`. Чат вызывает тот же обработчик инструментов внутри Worker.
+
+- `uniprot_search` принимает `query` и `field` (`gene` или `protein`). Поиск ограничен проверенными записями белков человека. [UniProt API](https://www.uniprot.org/api-documentation)
+- `quickgo_annotations` принимает `accession` и список категорий `focus` из `function`, `process`, `location`. [QuickGO API](https://www.ebi.ac.uk/QuickGO/api/)
+
+[Пример MCP-сервера преподавателя](https://github.com/EdwFa/MCP_calc/tree/main)
+
+## Сборка и запуск
+
+Нужны Node.js 22+, Bash и ключ OpenRouter для запросов к модели. Задайте `OPENROUTER_API_KEY` в окружении. Для опубликованной версии задайте его как секрет в Sites.
+
+```bash
+npm run build
+npm run validate
+npm start
 ```
 
-The deterministic build produces:
+Локальный сайт доступен на `http://127.0.0.1:8765/`. История хранится в браузере. Бесплатные модели ограничены квотой OpenRouter, а научные утверждения следует сверять по записям источников.
 
-```text
-dist/
-├── .openai/
-│   └── hosting.json
-└── server/
-    └── index.js
-```
-
-`dist/server/index.js` is an ES module with a default export containing `fetch(request, env, ctx)`. Edit `worker/index.js`, not the generated file under `dist/`.
+`worker/index.html` содержит интерфейс, `worker/index.js` — агенты и MCP-инструменты. Сборка объединяет их в Worker для Sites.
