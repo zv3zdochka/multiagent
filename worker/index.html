@@ -253,7 +253,7 @@ async function readReply(reply, body, trace) {
         if (event.error) throw new Error(event.error);
         if (event.trace) {
           trace.hidden = false;
-          trace.querySelector('ol').append(element('li', event.trace));
+          const item = element('li', ''); item.append(element('strong', event.trace)); if (event.detail) item.append(element('div', event.detail)); trace.querySelector('ol').append(item);
         }
         if (event.stage) body.textContent = event.stage + '…';
         if (event.result) result = event.result;

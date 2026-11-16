@@ -105,30 +105,30 @@ async function chat(payload, env, send) {
   try { parsed = parseDecision(raw); } catch { throw Error('Модель вернула ответ в неверном формате. Попробуйте ещё раз.'); }
   if (parsed.intent==='reply' && parsed.answer) return {answer:parsed.answer,sources:{}};
   if(parsed.intent!=='search' || !parsed.query) return {answer:'Уточните название белка или символ гена.',sources:{}};
-  send({trace:'Агент чата → UniProt · найти белок «'+parsed.query+'»'});
+  send({trace:'Агент чата → UniProt', detail:'Запрос требует проверяемых сведений о конкретном белке. Цель: '+parsed.query+'. Фокус: '+(parsed.focus||['function']).join(', ')});
   const searchPlan = parseDecision(await model(env,selected,
     'Ты агент UniProt. Выбери запрос в UniProtKB по символу гена или английскому названию белка. Верни только JSON {"query":"...","field":"gene или protein"}. Сохраняй точный символ, если он указан.',
     {...context,target:parsed.query}));
   const q = typeof searchPlan.query === 'string' && searchPlan.query.trim() ? searchPlan.query.trim() : String(parsed.query);
   const searchArgs = {query:q,field:searchPlan.field === 'protein' ? 'protein' : 'gene'};
-  send({trace:'UniProt · uniprot_search('+searchArgs.field+': '+q+')'});
+  send({trace:'UniProt · uniprot_search', detail:'Ищу проверенную запись человека по полю '+searchArgs.field+' со значением «'+q+'». Параметры: organism_id=9606, reviewed=true.'});
   const entries = await callTool('uniprot_search',searchArgs);
   if (!entries.length) return {answer:'Запись для «'+q+'» не найдена.',sources:{}};
   if (entries.length > 1) return {answer:'Найдено несколько записей: '+entries.map(e=>e.primaryAccession).join(', ')+'. Уточните название белка.',sources:{}};
   const entry=entries[0], accession=entry.primaryAccession;
   const text=(entry.comments||[]).filter(c=>c.commentType==='FUNCTION').flatMap(c=>c.texts||[]).map(t=>t.value).join(' ');
   const sources={U1:{text,url:'https://www.uniprot.org/uniprotkb/'+accession+'/entry'}};
-  send({trace:'UniProt → Gene Ontology · передана запись '+accession});
+  send({trace:'UniProt → Gene Ontology', detail:'UniProt подтвердил запись '+accession+' для Homo sapiens. Передаю accession для поиска аннотаций этого белка.'});
   const goPlan = parseDecision(await model(env,selected,
     'Ты агент Gene Ontology. По вопросу выбери нужные аспекты GO. Верни только JSON {"focus":["function","process","location"]}, оставив только относящиеся к вопросу аспекты. Если GO не нужен, верни пустой список.',
     {...context,accession,uniprot: text,requested:parsed.focus}));
   const focus = Array.isArray(goPlan.focus) ? goPlan.focus.filter(category=>Object.hasOwn(aspects,category)) : [];
   if (focus.length) {
-    send({trace:'Gene Ontology · quickgo_annotations('+accession+', '+focus.join(', ')+')'});
+    send({trace:'Gene Ontology · quickgo_annotations', detail:'Запрашиваю категории '+focus.join(', ')+' для UniProtKB:'+accession+'. NOT-аннотации отбрасываются, остаются уникальные GO ID.'});
     Object.assign(sources, await callTool('quickgo_annotations',{accession,focus}));
-    send({trace:'Gene Ontology → Агент чата · аннотаций '+(Object.keys(sources).length-1)});
+    send({trace:'Gene Ontology → Агент чата', detail:'GO вернул '+(Object.keys(sources).length-1)+' аннотаций с терминами, evidence code и ссылками.'});
   } else {
-    send({trace:'Gene Ontology → Агент чата · для вопроса достаточно UniProt'});
+    send({trace:'Gene Ontology → Агент чата', detail:'Для текущего вопроса GO-аннотации не нужны, поэтому используется только UniProt.'});
   }
   send({stage:'Готовлю ответ со ссылками'});
   try {
