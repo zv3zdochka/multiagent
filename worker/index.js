@@ -1,14 +1,14 @@
 import page from './page.js';
 
-const models = new Set(['nvidia/nemotron-3.5-lightning:free','nvidia/nemotron-3-ultra-550b-a55b:free','openrouter/free','nvidia/nemotron-3.5-super-vl:free','thinkingmachines/inkling-2-small:free']);
+const models = new Set(['inclusionai/ling-3.0-flash']);
 async function get(url) {
   const response = await fetch(url, {headers:{Accept:'application/json'}});
   if (!response.ok) throw Error('Источник временно недоступен (' + response.status + ')');
   return response.json();
 }
 async function model(env, selected, system, data) {
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer '+env.OPENROUTER_API_KEY},
+  const response = await fetch((env.ROUTERAI_BASE_URL || 'https://routerai.ru/api/v1') + '/chat/completions', {
+    method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer '+env.ROUTERAI_API_KEY},
     body:JSON.stringify({model:selected,temperature:0,max_tokens:4000,reasoning:{enabled:false},messages:[{role:'system',content:system},{role:'user',content:system+'\n'+JSON.stringify(data)}]})
   });
   if (!response.ok) throw Error(response.status === 429 ? 'OpenRouter ограничил запросы. Попробуйте позже.' : 'Ошибка OpenRouter ('+response.status+')');
@@ -95,7 +95,7 @@ async function callTool(name, args) {
 }
 
 async function chat(payload, env, send) {
-  const question = (payload.question || '').trim(), selected=payload.model;
+  const question = (payload.question || '').trim(), selected=payload.model || env.ROUTERAI_MODEL || 'inclusionai/ling-3.0-flash';
   if (!question || question.length > 2000 || !models.has(selected)) throw Error('Проверьте вопрос и модель.');
   const context={question,previous_question:String(payload.previous||'').slice(-8500)};
   const style='Отвечай на языке вопроса пользователя, по существу, без лишнего представления. Учитывай историю диалога.';

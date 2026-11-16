@@ -48,3 +48,17 @@ npm start
 **Источники ответа.** Под ответом доступны запись UniProt, термины Gene Ontology, коды доказательств и ссылки на публикации.
 
 ![Источники ответа о SOD1 в Proteome](docs/sources.jpg)
+
+## Локальная мультиагентная версия
+
+Локальный пайплайн вынесен в отдельный Python-пакет. Router AI используется через OpenAI-совместимый API:
+
+```text
+ROUTERAI_BASE_URL=https://routerai.ru/api/v1
+ROUTERAI_MODEL=inclusionai/ling-3.0-flash
+ROUTERAI_API_KEY=...
+```
+
+Структура состоит из `ChatAgent`, `UniProtAgent`, `GeneOntologyAgent`, `AnswerAgent`, `CriticAgent` и `Orchestrator`. Источники подключены через отдельный `mcp_server` с четырьмя JSON-RPC-инструментами. `run_local.py` запускает полный исследовательский сценарий из терминала.
+
+Журнал показывает сообщения между агентами и проверку grounding. Он фиксирует планы, передачу accession, результаты MCP-инструментов и проверку цитат. Внутренние рассуждения модели не выводятся.
