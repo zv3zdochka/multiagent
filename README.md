@@ -46,10 +46,6 @@ npm start
 
 ![Журнал работы трёх агентов в Proteome](docs/agent-workflow.png)
 
-**Источники ответа.** Под ответом доступны запись UniProt, термины Gene Ontology, коды доказательств и ссылки на публикации.
-
-![Источники ответа о SOD1 в Proteome](docs/sources.jpg)
-
 ## Текущая реализация
 
 Рабочий веб-чат использует Node.js Worker и модель `inclusionai/ling-3.0-flash` через `https://routerai.ru/api/v1`. Для запуска установите `ROUTERAI_API_KEY` в окружении сервера. Python-пакеты `app/` и `mcp_server/` являются отдельным незавершённым прототипом и не обслуживают веб-чат.
