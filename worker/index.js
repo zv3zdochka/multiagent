@@ -11,7 +11,7 @@ async function model(env, selected, system, data) {
     method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer '+env.ROUTERAI_API_KEY},
     body:JSON.stringify({model:selected,temperature:0,max_tokens:4000,reasoning:{enabled:false},messages:[{role:'system',content:system},{role:'user',content:system+'\n'+JSON.stringify(data)}]})
   });
-  if (!response.ok) throw Error(response.status === 429 ? 'OpenRouter ограничил запросы. Попробуйте позже.' : 'Ошибка OpenRouter ('+response.status+')');
+  if (!response.ok) throw Error(response.status === 429 ? 'Router AI ограничил запросы. Попробуйте позже.' : 'Ошибка Router AI ('+response.status+')');
   const dataOut = await response.json();
   const content = dataOut.choices?.[0]?.message?.content;
   if (!content) throw Error('Модель вернула пустой ответ.');
@@ -33,12 +33,22 @@ const tools = {
   const q=String(args.query).slice(0,120).replace(/["\\]/g,'');
   const find=async query=>get('https://rest.uniprot.org/uniprotkb/search?'+new URLSearchParams({query:'organism_id:9606 AND reviewed:true AND '+query,size:'6'}));
   let entries=[];
-  if (args.field === 'gene' && /^[A-Za-z0-9_-]+$/.test(q)) entries=(await find('gene_exact:"'+q+'"')).results;
+  if (/^[A-Za-z0-9_-]+$/.test(q)) entries=(await find('gene_exact:"'+q+'"')).results;
   if (!entries.length) entries=(await find('protein_name:"'+q+'"')).results;
       return entries.map(entry => ({
         primaryAccession: entry.primaryAccession,
         comments: (entry.comments || []).filter(comment => comment.commentType === 'FUNCTION')
       }));
+    },
+  },
+  uniprot_get_entry: {
+    description: 'Retrieve a UniProt entry by accession',
+    inputSchema: {type:'object', required:['accession'], properties:{accession:{type:'string'}}},
+    async run({accession}) {
+      if (!/^[A-Z0-9]{6,10}$/.test(accession)) throw Error('Недопустимый идентификатор UniProt.');
+      const entry = await get('https://rest.uniprot.org/uniprotkb/'+accession+'.json');
+      if (entry.organism?.taxonId !== 9606 || entry.entryType !== 'UniProtKB reviewed (Swiss-Prot)') throw Error('Нужна проверенная запись белка человека.');
+      return entry;
     },
   },
   quickgo_annotations: {
@@ -110,9 +120,18 @@ async function chat(payload, env, send) {
     'Ты агент UniProt. Выбери запрос в UniProtKB по символу гена или английскому названию белка. Верни только JSON {"query":"...","field":"gene или protein"}. Сохраняй точный символ, если он указан.',
     {...context,target:parsed.query}));
   const q = typeof searchPlan.query === 'string' && searchPlan.query.trim() ? searchPlan.query.trim() : String(parsed.query);
-  const searchArgs = {query:q,field:searchPlan.field === 'protein' ? 'protein' : 'gene'};
-  send({trace:'UniProt · uniprot_search', detail:'Ищу проверенную запись человека по полю '+searchArgs.field+' со значением «'+q+'». Параметры: organism_id=9606, reviewed=true.'});
-  const entries = await callTool('uniprot_search',searchArgs);
+  const previousMatches = [...String(context.previous_question || '').matchAll(/UniProt:\s*([A-Z0-9]{6,10})/g)];
+  const previousAccession = previousMatches.at(-1)?.[1];
+  const followUp = Boolean(previousAccession && /(?:его|него|неё|нее|этого белка|этот белок|this protein|\\b(?:it|its)\\b)/i.test(question) && !/[A-Za-z0-9]{2,}/.test(question));
+  let entries;
+  if (followUp) {
+    send({trace:'UniProt · использовать текущую запись', detail:'Это уточнение к предыдущему вопросу. Использую accession '+previousAccession+' вместо нового поиска по названию.'});
+    entries = [await callTool('uniprot_get_entry',{accession:previousAccession})];
+  } else {
+    const searchArgs = {query:q,field:searchPlan.field === 'protein' ? 'protein' : 'gene'};
+    send({trace:'UniProt · uniprot_search', detail:'Ищу проверенную запись человека по полю '+searchArgs.field+' со значением «'+q+'». Параметры: organism_id=9606, reviewed=true.'});
+    entries = await callTool('uniprot_search',searchArgs);
+  }
   if (!entries.length) return {answer:'Запись для «'+q+'» не найдена.',sources:{}};
   if (entries.length > 1) return {answer:'Найдено несколько записей: '+entries.map(e=>e.primaryAccession).join(', ')+'. Уточните название белка.',sources:{}};
   const entry=entries[0], accession=entry.primaryAccession;

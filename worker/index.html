@@ -319,7 +319,8 @@ form.addEventListener('submit', async event => {
   const body = element('div', 'Ищу записи и готовлю ответ…', 'loading');
   response.append(element('div', selection, 'label'), body);
   const trace = element('details');
-  trace.hidden = false;
+  trace.hidden = true;
+  trace.open = true;
   trace.append(element('summary', 'Работа агентов'), element('ol'));
   response.insertBefore(trace, body);
   messages.append(response);
